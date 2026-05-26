@@ -1,0 +1,6 @@
+{
+  "name": "Levo Solution - Neo-Brutalism",
+  "description": "Landing page for Levo Solution utilizing Modern Neo-Brutalism architecture and design.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
