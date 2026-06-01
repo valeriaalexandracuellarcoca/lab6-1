@@ -1,29 +1,75 @@
+# ============================================================================
+# WORKFLOW: Deploy automático de la app React/Vite hacia AWS (S3 + CloudFront)
+# ----------------------------------------------------------------------------
+# Este workflow de GitHub Actions se encarga de:
+#   1. Compilar la aplicación React con Vite
+#   2. Subir los archivos estáticos generados (dist/) a un bucket S3
+#   3. Invalidar la caché de CloudFront para que los usuarios vean la versión nueva
+#
+# Se ejecuta automáticamente cada vez que se hace push a main o master.
+# ============================================================================
 name: Deploy React App to S3 & CloudFront
 
+# --- TRIGGER (¿Cuándo se ejecuta?) ---
+# Este workflow se dispara automáticamente cuando se hace un "push"
+# a las ramas 'main' o 'master'. Es decir, cada vez que se sube
+# código nuevo a alguna de esas ramas, se lanza el deploy.
 on:
   push:
     branches: [main, master]
 
 jobs:
   deploy:
+    # El job corre en una máquina virtual con Ubuntu (proporcionada por GitHub).
+    # "ubuntu-latest" usa la versión más reciente disponible de Ubuntu en GitHub Actions.
     runs-on: ubuntu-latest
 
     steps:
+      # ------------------------------------------------------------------
+      # PASO 1: Clonar el repositorio
+      # ------------------------------------------------------------------
+      # Descarga el código fuente del repo en la máquina virtual del runner.
+      # Sin este paso, el runner no tendría acceso a ningún archivo del proyecto.
       - name: Checkout del código
         uses: actions/checkout@v4
 
+      # ------------------------------------------------------------------
+      # PASO 2: Instalar Node.js
+      # ------------------------------------------------------------------
+      # Configura Node.js v20 en el runner. También habilita el cache de npm
+      # para que las dependencias se descarguen más rápido en ejecuciones futuras.
       - name: Instalar Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
 
+      # ------------------------------------------------------------------
+      # PASO 3: Instalar dependencias del proyecto
+      # ------------------------------------------------------------------
+      # "npm ci" instala las dependencias exactas que están en package-lock.json.
+      # Es más rápido y determinista que "npm install" — ideal para CI/CD
+      # porque garantiza que siempre se usen las mismas versiones.
       - name: Instalar dependencias
         run: npm ci
 
+      # ------------------------------------------------------------------
+      # PASO 4: Compilar/Construir la app (Build de producción)
+      # ------------------------------------------------------------------
+      # Ejecuta Vite para generar los archivos estáticos optimizados
+      # (HTML, CSS, JS minificados) en la carpeta "dist/".
+      # Estos son los archivos que se subirán al hosting (S3).
       - name: Construir sitio estático (Vite Build)
         run: npm run build
 
+      # ------------------------------------------------------------------
+      # PASO 5: Configurar credenciales de AWS
+      # ------------------------------------------------------------------
+      # Autentica al runner con AWS usando las credenciales almacenadas
+      # como Secrets y Variables en la configuración del repositorio de GitHub.
+      #   - AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY → credenciales IAM (secrets)
+      #   - AWS_REGION → región donde está el bucket S3 (variable)
+      # Esto permite que los comandos "aws" de los pasos siguientes funcionen.
       - name: Configurar credenciales de AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -31,6 +77,14 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ vars.AWS_REGION }}
 
+      # ------------------------------------------------------------------
+      # PASO 6: Subir archivos al bucket S3
+      # ------------------------------------------------------------------
+      # "aws s3 sync" sincroniza la carpeta dist/ con el bucket S3:
+      #   --delete  → elimina del bucket los archivos que ya no existen en dist/
+      #              (mantiene el bucket limpio, sin archivos viejos)
+      #   --exclude → ignora carpetas de git/github que no deben subirse
+      # El bucket S3 actúa como el "hosting" de archivos estáticos.
       - name: Sincronizar directorio de salida (dist) con S3
         run: |
           aws s3 sync dist/ s3://${{ vars.AWS_S3_BUCKET }} \
@@ -38,6 +92,15 @@ jobs:
             --exclude ".git/*" \
             --exclude ".github/*"
 
+      # ------------------------------------------------------------------
+      # PASO 7: Invalidar la caché de CloudFront
+      # ------------------------------------------------------------------
+      # CloudFront es el CDN de AWS que sirve los archivos a los usuarios.
+      # Como CloudFront cachea los archivos, después de subir una versión nueva
+      # hay que "invalidar" la caché para que deje de servir la versión vieja.
+      #   --paths "/*" → invalida TODOS los archivos cacheados
+      # Sin este paso, los usuarios podrían seguir viendo la versión anterior
+      # hasta que la caché expire naturalmente (lo cual puede tardar horas).
       - name: Invalidar caché de CloudFront
         run: |
           aws cloudfront create-invalidation \
