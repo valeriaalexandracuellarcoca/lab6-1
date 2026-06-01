@@ -19,7 +19,6 @@ export default function Hero() {
           <br className="hidden md:block" />
           <span className="text-black inline-block bg-gradient-to-r from-[#5C85FF] to-[#D98BFF] text-white px-4 border-4 border-black shadow-[8px_8px_0_0_#000] mt-2">
             Solution
-          </span>
         </h1>
         
         <p className="font-sans font-bold text-black text-xl md:text-3xl leading-relaxed mb-16 max-w-3xl bg-white p-6 border-4 border-black shadow-[8px_8px_0_0_#000]">
